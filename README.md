@@ -25,7 +25,7 @@ This project embodies the spirit of building from the ground up — combining de
 ### 1. Password Cracking for Hashes
 
 - **Wide Algorithm Support:**  
-  Supports an extensive list of hash algorithms including but not limited to:  
+  Supports an extensive list of hash algorithms including but not limited to:
   MD5, SHA1, SHA256, SHA512, NTLM, bcrypt (including passlib variants), crypt family (md5-crypt, sha256-crypt, sha512-crypt), Argon2, RIPEMD160, Whirlpool, SHA3 variants, HMACs, and scrypt.
 
 - **Salted Hash Handling:**  
@@ -45,7 +45,8 @@ This project embodies the spirit of building from the ground up — combining de
 ### 2. Archive Password Cracking
 
 - **Supported Formats:**  
-  Password-protected ZIP and RAR archives are supported, enabling recovery of lost or forgotten archive passwords.
+  HACK3FORCE supports password cracking for a wide variety of protected file types, including common archive formats such as ZIP, RAR, RAR5, and 7z, as well as encrypted documents like PDF, Microsoft Office files (Word, Excel, PowerPoint in both legacy and Open XML formats), and encrypted key files including SSH private keys, PEM keys, and KeePass databases (KDB and KDBX). Additionally, it supports cracking GPG-encrypted files.
+This extensive support enables recovery of lost or forgotten passwords across multiple file types and encryption schemes, all within a single unified tool.
 
 - **Attack Types:**  
   Both dictionary and brute force attacks are implemented, with error handling to gracefully manage corrupted or unsupported archives.
@@ -60,8 +61,8 @@ This project embodies the spirit of building from the ground up — combining de
 
 ### 3. Network Service Brute Forcing
 
-- **Protocols Supported:**  
-  SSH and FTP forms brute forcing are fully supported.
+- **Supported Protocols:**  
+  Fully supports brute forcing of SSH, FTP, MySQL, and SMB services.
 
 - **User and Password Lists:**  
   Allows specifying user lists and password lists for targeted credential guessing.
@@ -143,63 +144,163 @@ Run the tool with the desired mode and options. The tool supports three main mod
 Crack a single hash using dictionary or brute force:
 
 ```bash
-python HACK3FORCE.py --mode 1 --hash <hash> --type <hash_type> [--dictionary <wordlist>] [--max-length N] [--processes N] [--verbose]
+python3 HACK3FORCE.py --mode 1 --hash <hash> --type <hash_type> [--dictionary <wordlist>] [--max-length N] [--processes N] [--verbose]
 ```
 
 Example:
 
 ```bash
-python HACK3FORCE.py --mode 1 --hash 5f4dcc3b5aa765d61d8327deb882cf99 --type md5 --dictionary passwords.txt --verbose
+python3 HACK3FORCE.py --mode 1 --hash 5f4dcc3b5aa765d61d8327deb882cf99 --type md5 --dictionary passwords.txt --verbose
 ```
 
 ---
 
-### Mode 2: Archive Cracking
+### Mode 2: Cracking Passwords for Archives, Encrypted Documents, and Key Files
+
+**Archives Cracking:**
 
 Crack ZIP archive password:
 
 ```bash
-python HACK3FORCE.py --mode 2 --zip2hack secret.zip --dictionary passwords.txt --processes 4 --verbose
+python3 HACK3FORCE.py --mode 2 --zip2hack secret.zip --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack 7z archive Password:
+
+```bash
+python3 HACK3FORCE.py --mode 2 --a7z2hack secret.7z --dictionary passwords.txt --processes 4 --verbose
 ```
 
 Crack RAR archive password:
 
 ```bash
-python HACK3FORCE.py --mode 2 --rar2hack secret.rar --dictionary passwords.txt --processes 4 --verbose
+python3 HACK3FORCE.py --mode 2 --rar2hack secret.rar --dictionary passwords.txt --processes 4 --verbose
 ```
 
-Show cracked password after crack:
+Crack RAR5 Archive Password:
 
 ```bash
-python HACK3FORCE.py --mode 2 --show-pass secret.zip
+python3 HACK3FORCE.py --mode 2 --a5r2hack secret_rar5.rar --dictionary passwords.txt --processes 4 --verbose
 ```
 
-OR:
+**Encrypted File Cracking:**
+
+Crack GPG Encrypted File Password:
 
 ```bash
-python HACK3FORCE.py --mode 2 --show-pass secret.rar
+python3 HACK3FORCE.py --mode 2 --gpg2hack secret.gpg --dictionary passwords.txt --processes 4 --verbose
+```
+
+**Office Documents Cracking:**
+
+Crack PDF document Encrypted password:
+
+```bash
+python3 HACK3FORCE.py --mode 2 --pdf2hack secret.pdf --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack Word Document Encrypted Password (legacy format):
+
+```bash
+python3 HACK3FORCE.py --mode 2 --doc2hack secret.doc --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack Word Document Encrypted Password (Open XML format):
+
+```bash
+python3 HACK3FORCE.py --mode 2 --docx2hack secret.docx --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack Excel Document Encrypted Password (legacy format):
+
+```bash
+python3 HACK3FORCE.py --mode 2 --xls2hack secret.xls --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack Excel Document Encrypted Password (Open XML format):
+
+```bash
+python3 HACK3FORCE.py --mode 2 --xlsx2hack secret.xlsx --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack PowerPoint Document Encrypted Password (legacy format):
+
+```bash
+python3 HACK3FORCE.py --mode 2 --ppt2hack secret.ppt --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack PowerPoint Document Encrypted Password (Open XML format):
+
+```bash
+python3 HACK3FORCE.py --mode 2 --pptx2hack secret.pptx --dictionary passwords.txt --processes 4 --verbose
+```
+
+**Encrypted Key files Cracking:**
+
+Crack SSH Private Key password:
+
+```bash
+python3 HACK3FORCE.py --mode 2 --spk2hack secret_id_rsa --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack PEM Private Key password:
+
+```bash
+python3 HACK3FORCE.py --mode 2 --pem2hack secret_private_key.pem --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack KeePass KDB (v1.x) password:
+
+```bash
+python3 HACK3FORCE.py --mode 2 --kdb2hack secret.kdb --dictionary passwords.txt --processes 4 --verbose
+```
+
+Crack KeePass KDBX (v2.x) password:
+
+```bash
+python3 HACK3FORCE.py --mode 2 --kdbx2hack secret.kdbx --dictionary passwords.txt --processes 4 --verbose
+```
+
+**After Cracking protected file:**
+
+Display the cracked password:
+
+```bash
+python3 HACK3FORCE.py --mode 2 --show-pass [secret.zip | secret.rar | secret.pdf | secret_id_rsa | secret.gpg]
 ```
 
 ---
 
 ### Mode 3: Network Service Brute Forcing
 
-Brute force SSH or FTP forms:
+Brute force SSH, FTP, MySQL, or SMB services:
 
 ```bash
-python HACK3FORCE.py --mode 3 --user <user> --password-list <password_list> --target-ip <ip> [--ssh | --ftp | [--verbose]
+python3 HACK3FORCE.py --mode 3 --user <user> --password-list <password_list> --target-ip <ip> [--ssh | --ftp | --mysql | --smb] [--verbose]
 ```
 
 Example SSH brute force:
 
 ```bash
-python HACK3FORCE.py --mode 3 --user admin --password-list passwords.txt --target-ip 192.168.1.100 --ssh --verbose
+python3 HACK3FORCE.py --mode 3 --user admin --password-list passwords.txt --target-ip 192.168.1.100 --ssh --verbose
 ```
 
 Example FTP brute force:
 
 ```bash
-python HACK3FORCE.py --mode 3 --user admin --password-list passwords.txt --target-ip 192.168.1.100 --ftp --verbose
+python3 HACK3FORCE.py --mode 3 --user admin --password-list passwords.txt --target-ip 192.168.1.100 --ftp --verbose
+```
+
+Example MYSQL brute force:
+
+```bash
+python3 HACK3FORCE.py --mode 3 --user admin --password-list passwords.txt --target-ip 192.168.1.100 --mysql --verbose
+```
+
+Example SMB brute force:
+
+```bash
+python3 HACK3FORCE.py --mode 3 --user admin --password-list passwords.txt --target-ip 192.168.1.100 --smb --verbose
 ```
 
 ---
@@ -207,10 +308,10 @@ python HACK3FORCE.py --mode 3 --user admin --password-list passwords.txt --targe
 ## Notes and Best Practices
 
 * Always ensure you have explicit permission to test the target systems.
-* Use verbose mode (--verbose) for detailed output during cracking.
-* Adjust --max-length and --processes to balance speed and resource usage.
-* Monitor logs (cracked_passwords.log) for results and auditing.
-* Use strong comprehensive wordlists for dictionary attacks to improve success rates.
+* Use verbose mode (`--verbose`) for detailed output during cracking.
+* Adjust `--max-length` and `--processes` to balance speed and resource usage.
+* Monitor logs (`cracked_passwords.log`) for results and auditing.
+* Use strong, comprehensive wordlists for dictionary attacks to improve success rates.
 
 ---
 

