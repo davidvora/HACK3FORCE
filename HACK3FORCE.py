@@ -82,7 +82,7 @@ def banner():
 ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝  ╚═╝      ╚═════╝ ╚═╝   ╚═╝ ╚═════╝╚══════╝
 """ + Colors.ENDC)                
     print(Colors.FAIL + Colors.BOLD + "Advanced Modular Brute Force Tool for Penetration Testing \n" + Colors.ENDC)
-    print(Colors.WARNING + "[!] WARNING: HACK_FORCE is a powerful offensive security tool intended for ethical use only.\n"
+    print(Colors.WARNING + "[!] WARNING: HACK3FORCE is a powerful offensive security tool intended for ethical use only.\n"
           "[!] Any unauthorized, illegal, or malicious use is strictly prohibited and may constitute a criminal offense.\n"
           "[!] The creator of this tool take no responsibility for misuse or any resulting damage.\n" + Colors.ENDC)
     print(Colors.FAIL + Colors.BOLD + "by David Dvora" + Colors.ENDC)
