@@ -7,7 +7,7 @@ A revolutionary, fully Python-native framework designed to deliver unparalleled 
 
 ## Overview
 
-![Image](https://github.com/user-attachments/assets/95811292-2911-4c0d-b760-6c3c4eabcdd4) (swap with logo link in github in issue!)
+![Image](https://github.com/user-attachments/assets/95811292-2911-4c0d-b760-6c3c4eabcdd4)
 
 **HACK3FORCE** is a state-of-the-art, all-encompassing brute force and dictionary attack platform, meticulously engineered from the ground up in pure Python. Unlike conventional tools that depend heavily on third-party cracking engines such as Hashcat, John the Ripper, or Hydra, **HACK3FORCE** features a proprietary, native cracking core. This independence ensures complete transparency, extensibility, and customization, empowering penetration testers, security researchers, and ethical hackers to tailor every aspect of their attack strategies.
 
@@ -497,7 +497,7 @@ python3 HACK3FORCE.py --mode 3 --sc_mode 3
 
 ## Tutorial HACK3FORCE Video
 
-
+[![HACK3FORCE Demo Video](https://github.com/user-attachments/assets/84ef8ce0-c6c1-46ee-8c50-208799d3814d)](https://youtu.be/dJENF3bXl7A)
 
 ---
 
