@@ -208,6 +208,39 @@ cd HACK3FORCE
 pip install -r requirements.txt
 ```
 
+Note: If the above command doesn't work (e.g., due to missing or broken environment), follow the optional steps below to set up a virtual environment and install the dependencies manually.
+
+---
+
+## Optional: Setting up a Virtual Environment
+
+A. Check if `venv` is installed:
+
+```bash
+dpkg -s python3-venv
+```
+
+B. If it's not installed, install it with:
+
+```bash
+sudo apt install python3-venv
+```
+
+C. Create and activate a virtual environment:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+D. Now install the Dependencies again:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
 3. (Optional) Install system utilities for RAR support:
 
 * On Debian/Ubuntu:
